@@ -9,13 +9,12 @@ const __dirname = path.dirname(__filename);
 const correrMigraciones = async () => {
   try {
     console.log("Iniciando sistema de migraciones...");
-    const archivosSql = ["users.sql", "categories.sql"];
+    const archivosSql = ["users.sql", "categories.sql", "tags.sql", "tasks.sql", "tags_tasks.sql"];
 
     for (const archivo of archivosSql) {
       const rutaSql = path.join(__dirname, "migrations", archivo);
-
       if (fs.existsSync(rutaSql)) {
-        console.log(`Ejecutando ${archivo}...`);
+        console.log(`➡️  Ejecutando ${archivo}...`);
         const sqlNativo = fs.readFileSync(rutaSql, "utf8");
 
         await pool.query(sqlNativo);
