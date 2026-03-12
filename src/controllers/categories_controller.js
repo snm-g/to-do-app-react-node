@@ -1,11 +1,11 @@
 import crypto from "crypto";
 import pool from "../db/connection.js";
-import { categoryDecorator, categoriesListDecorator } from "../decorators/category-decorator.js";
+import { categoryDecorator, categoriesListDecorator } from "../decorators/categories_decorator.js";
 
 // 1. LISTAR TODAS
 const index = async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM categories"); // plural
+    const [rows] = await pool.query("SELECT * FROM categories");
     res.json(categoriesListDecorator(rows));
   } catch (error) {
     res.status(500).json({ error: error.message });
