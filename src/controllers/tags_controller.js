@@ -2,10 +2,11 @@ import crypto from "crypto";
 import pool from "../db/connection.js";
 import { tagDecorator, tagsListDecorator } from "../decorators/tags_decorator.js";
 
-// 1. LISTAR TODAS
+// 1. LISTAR TODAS (Solo las del usuario logueado)
 const index = async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM tags");
+    const userId = req.user.id;
+    const [rows] = await pool.query("SELECT * FROM tags WHERE user_id = ?", [userId]);
     res.json(tagsListDecorator(rows));
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -15,21 +16,27 @@ const index = async (req, res) => {
 // 2. CREAR
 const store = async (req, res) => {
   try {
-    const { name, user_id } = req.body;
-    if (!name || !user_id) {
-      return res.status(400).json({ error: "El nombre y el user_id son obligatorios" });
+    const userId = req.user.id;
+    let { name } = req.body;
+
+    if (!name || name.trim() === "") {
+      return res.status(400).json({ error: "El nombre es obligatorio y no puede estar vacío" });
+    }
+    name = name.trim();
+
+    const [existingTag] = await pool.query("SELECT id FROM tags WHERE name = ? AND user_id = ?", [name, userId]);
+
+    if (existingTag.length > 0) {
+      return res.status(400).json({ error: "Ya tienes una etiqueta registrada con ese nombre" });
     }
 
     const tagId = crypto.randomUUID();
-    await pool.query("INSERT INTO tags (id, name, user_id) VALUES (?, ?, ?)", [tagId, name, user_id]);
-    const [rows] = await pool.query("SELECT * FROM tags WHERE id = ?", [tagId]);
+    await pool.query("INSERT INTO tags (id, name, user_id) VALUES (?, ?, ?)", [tagId, name, userId]);
 
+    const [rows] = await pool.query("SELECT * FROM tags WHERE id = ?", [tagId]);
     res.status(201).json(tagDecorator(rows[0]));
   } catch (error) {
     console.error(error);
-    if (error.errno === 1452) {
-      return res.status(400).json({ error: "El usuario especificado no existe" });
-    }
     res.status(500).json({ error: "Error interno del servidor" });
   }
 };
@@ -38,9 +45,11 @@ const store = async (req, res) => {
 const get = async (req, res) => {
   try {
     const { id } = req.params;
-    const [rows] = await pool.query("SELECT * FROM tags WHERE id = ?", [id]);
+    const userId = req.user.id;
 
-    if (rows.length === 0) return res.status(404).json({ error: "Etiqueta no encontrada" });
+    const [rows] = await pool.query("SELECT * FROM tags WHERE id = ? AND user_id = ?", [id, userId]);
+
+    if (rows.length === 0) return res.status(404).json({ error: "Etiqueta no encontrada o no tienes permisos" });
     res.json(tagDecorator(rows[0]));
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -51,15 +60,30 @@ const get = async (req, res) => {
 const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name } = req.body;
+    const userId = req.user.id;
+    let { name } = req.body;
 
-    if (!name) return res.status(400).json({ error: "El nuevo nombre es obligatorio" });
+    if (!name || name.trim() === "") {
+      return res.status(400).json({ error: "El nuevo nombre es obligatorio y no puede estar vacío" });
+    }
+    name = name.trim();
 
-    const [result] = await pool.query("UPDATE tags SET name = ? WHERE id = ?", [name, id]);
+    const [existingTag] = await pool.query("SELECT id FROM tags WHERE name = ? AND user_id = ? AND id != ?", [
+      name,
+      userId,
+      id,
+    ]);
 
-    if (result.affectedRows === 0) return res.status(404).json({ error: "Etiqueta no encontrada" });
+    if (existingTag.length > 0) {
+      return res.status(400).json({ error: "Ya tienes otra etiqueta registrada con ese nombre" });
+    }
 
-    const [rows] = await pool.query("SELECT * FROM tags WHERE id = ?", [id]);
+    const [result] = await pool.query("UPDATE tags SET name = ? WHERE id = ? AND user_id = ?", [name, id, userId]);
+
+    if (result.affectedRows === 0)
+      return res.status(404).json({ error: "Etiqueta no encontrada o no tienes permisos" });
+
+    const [rows] = await pool.query("SELECT * FROM tags WHERE id = ? AND user_id = ?", [id, userId]);
     res.json(tagDecorator(rows[0]));
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -70,9 +94,12 @@ const update = async (req, res) => {
 const destroy = async (req, res) => {
   try {
     const { id } = req.params;
-    const [result] = await pool.query("DELETE FROM tags WHERE id = ?", [id]);
+    const userId = req.user.id;
 
-    if (result.affectedRows === 0) return res.status(404).json({ error: "Etiqueta no encontrada" });
+    const [result] = await pool.query("DELETE FROM tags WHERE id = ? AND user_id = ?", [id, userId]);
+
+    if (result.affectedRows === 0)
+      return res.status(404).json({ error: "Etiqueta no encontrada o no tienes permisos" });
     res.json({ message: "Etiqueta eliminada exitosamente" });
   } catch (error) {
     res.status(500).json({ error: error.message });
