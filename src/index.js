@@ -5,15 +5,17 @@ import userRoutes from "./routes/users_route.js";
 // import tagRoutes from "./routes/tags_route.js";
 // import taskRoutes from "./routes/tasks_route.js";
 
+import { verifyToken } from "./middlewares/auth_middleware.js";
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
 app.use("/api/users", userRoutes);
-// app.use("/api/categories", categoryRoutes);
-// app.use("/api/tags", tagRoutes);
-// app.use("/api/tasks", taskRoutes);
+// app.use("/api/categories", verifyToken, categoryRoutes);
+// app.use("/api/tags", verifyToken, tagRoutes);
+// app.use("/api/tasks", verifyToken, taskRoutes);
 
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
