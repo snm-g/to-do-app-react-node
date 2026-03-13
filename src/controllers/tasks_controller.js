@@ -2,10 +2,11 @@ import crypto from "crypto";
 import pool from "../db/connection.js";
 import { taskDecorator, tasksListDecorator } from "../decorators/tasks_decorator.js";
 
-// 1. LISTAR TODAS
+// 1. LISTAR TODAS (Solo las del usuario logueado)
 const index = async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM tasks");
+    const userId = req.user.id;
+    const [rows] = await pool.query("SELECT * FROM tasks WHERE user_id = ?", [userId]);
     res.json(tasksListDecorator(rows));
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -15,20 +16,30 @@ const index = async (req, res) => {
 // 2. CREAR
 const store = async (req, res) => {
   try {
-    const { title, description, is_completed, user_id, category_id, tags } = req.body;
+    const userId = req.user.id;
+    let { title, description, is_completed, category_id, tags } = req.body;
 
-    if (!title || !user_id) {
-      return res.status(400).json({ error: "El título y el user_id son obligatorios" });
+    if (!title || title.trim() === "") {
+      return res.status(400).json({ error: "El título es obligatorio y no puede estar vacío" });
+    }
+    title = title.trim();
+
+    if (title.length > 255) {
+      return res.status(400).json({ error: "El título no puede superar los 255 caracteres" });
+    }
+
+    if (tags && !Array.isArray(tags)) {
+      return res.status(400).json({ error: "El campo tags debe ser un arreglo de IDs" });
     }
 
     const taskId = crypto.randomUUID();
 
     await pool.query(
       "INSERT INTO tasks (id, title, description, is_completed, user_id, category_id) VALUES (?, ?, ?, ?, ?, ?)",
-      [taskId, title, description || null, is_completed || false, user_id, category_id || null],
+      [taskId, title, description || null, is_completed || false, userId, category_id || null],
     );
 
-    if (tags && Array.isArray(tags) && tags.length > 0) {
+    if (tags && tags.length > 0) {
       for (const tagId of tags) {
         await pool.query("INSERT INTO tags_tasks (task_id, tag_id) VALUES (?, ?)", [taskId, tagId]);
       }
@@ -39,19 +50,21 @@ const store = async (req, res) => {
   } catch (error) {
     console.error(error);
     if (error.errno === 1452) {
-      return res.status(400).json({ error: "El usuario, la categoría o la etiqueta no existen" });
+      return res.status(400).json({ error: "La categoría o la etiqueta especificada no existen" });
     }
     res.status(500).json({ error: "Error interno del servidor" });
   }
 };
 
-// 3. VER UNA SOLA
+// 3. VER UNA SOLA (Validando propiedad)
 const get = async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id;
 
-    const [rows] = await pool.query("SELECT * FROM tasks WHERE id = ?", [id]);
-    if (rows.length === 0) return res.status(404).json({ error: "Tarea no encontrada" });
+    const [rows] = await pool.query("SELECT * FROM tasks WHERE id = ? AND user_id = ?", [id, userId]);
+
+    if (rows.length === 0) return res.status(404).json({ error: "Tarea no encontrada o no tienes permisos" });
 
     const task = rows[0];
 
@@ -69,20 +82,32 @@ const get = async (req, res) => {
   }
 };
 
-// 4. ACTUALIZAR
+// 4. ACTUALIZAR (Validando propiedad y sanitizando)
 const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, is_completed, category_id, tags } = req.body;
+    const userId = req.user.id;
+    let { title, description, is_completed, category_id, tags } = req.body;
 
-    if (!title) return res.status(400).json({ error: "El título es obligatorio" });
+    if (!title || title.trim() === "") {
+      return res.status(400).json({ error: "El título es obligatorio y no puede estar vacío" });
+    }
+    title = title.trim();
+
+    if (title.length > 255) {
+      return res.status(400).json({ error: "El título no puede superar los 255 caracteres" });
+    }
+
+    if (tags && !Array.isArray(tags)) {
+      return res.status(400).json({ error: "El campo tags debe ser un arreglo válido" });
+    }
 
     const [result] = await pool.query(
-      "UPDATE tasks SET title = ?, description = ?, is_completed = ?, category_id = ? WHERE id = ?",
-      [title, description || null, is_completed || false, category_id || null, id],
+      "UPDATE tasks SET title = ?, description = ?, is_completed = ?, category_id = ? WHERE id = ? AND user_id = ?",
+      [title, description || null, is_completed || false, category_id || null, id, userId],
     );
 
-    if (result.affectedRows === 0) return res.status(404).json({ error: "Tarea no encontrada" });
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Tarea no encontrada o no tienes permisos" });
 
     if (tags && Array.isArray(tags)) {
       await pool.query("DELETE FROM tags_tasks WHERE task_id = ?", [id]);
@@ -104,13 +129,15 @@ const update = async (req, res) => {
   }
 };
 
-// 5. ELIMINAR
+// 5. ELIMINAR (Validando propiedad)
 const destroy = async (req, res) => {
   try {
     const { id } = req.params;
-    const [result] = await pool.query("DELETE FROM tasks WHERE id = ?", [id]);
+    const userId = req.user.id;
 
-    if (result.affectedRows === 0) return res.status(404).json({ error: "Tarea no encontrada" });
+    const [result] = await pool.query("DELETE FROM tasks WHERE id = ? AND user_id = ?", [id, userId]);
+
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Tarea no encontrada o no tienes permisos" });
     res.json({ message: "Tarea eliminada exitosamente" });
   } catch (error) {
     res.status(500).json({ error: error.message });
