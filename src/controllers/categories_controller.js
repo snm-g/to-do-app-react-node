@@ -5,7 +5,8 @@ import { categoryDecorator, categoriesListDecorator } from "../decorators/catego
 // 1. LISTAR TODAS
 const index = async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM categories");
+    const userId = req.user.id;
+    const [rows] = await pool.query("SELECT * FROM categories WHERE user_id = ?", [userId]);
     res.json(categoriesListDecorator(rows));
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -15,21 +16,29 @@ const index = async (req, res) => {
 // 2. CREAR
 const store = async (req, res) => {
   try {
-    const { name, user_id } = req.body;
-    if (!name || !user_id) {
-      return res.status(400).json({ error: "El nombre y el user_id son obligatorios" });
+    const { name } = req.body;
+    const userId = req.user.id;
+
+    if (!name) {
+      return res.status(400).json({ error: "El nombre es obligatorio" });
+    }
+
+    const [existingCategory] = await pool.query("SELECT id FROM categories WHERE name = ? AND user_id = ?", [
+      name,
+      userId,
+    ]);
+
+    if (existingCategory.length > 0) {
+      return res.status(400).json({ error: "Ya tienes una categoría registrada con ese nombre" });
     }
 
     const categoryId = crypto.randomUUID();
-    await pool.query("INSERT INTO categories (id, name, user_id) VALUES (?, ?, ?)", [categoryId, name, user_id]);
-    const [rows] = await pool.query("SELECT * FROM categories WHERE id = ?", [categoryId]);
+    await pool.query("INSERT INTO categories (id, name, user_id) VALUES (?, ?, ?)", [categoryId, name, userId]);
 
+    const [rows] = await pool.query("SELECT * FROM categories WHERE id = ?", [categoryId]);
     res.status(201).json(categoryDecorator(rows[0]));
   } catch (error) {
     console.error(error);
-    if (error.errno === 1452) {
-      return res.status(400).json({ error: "El usuario especificado no existe" });
-    }
     res.status(500).json({ error: "Error interno del servidor" });
   }
 };
@@ -38,9 +47,11 @@ const store = async (req, res) => {
 const get = async (req, res) => {
   try {
     const { id } = req.params;
-    const [rows] = await pool.query("SELECT * FROM categories WHERE id = ?", [id]);
+    const userId = req.user.id;
 
-    if (rows.length === 0) return res.status(404).json({ error: "Categoría no encontrada" });
+    const [rows] = await pool.query("SELECT * FROM categories WHERE id = ? AND user_id = ?", [id, userId]);
+
+    if (rows.length === 0) return res.status(404).json({ error: "Categoría no encontrada o no tienes permisos" });
     res.json(categoryDecorator(rows[0]));
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -52,14 +63,29 @@ const update = async (req, res) => {
   try {
     const { id } = req.params;
     const { name } = req.body;
+    const userId = req.user.id;
 
     if (!name) return res.status(400).json({ error: "El nuevo nombre es obligatorio" });
 
-    const [result] = await pool.query("UPDATE categories SET name = ? WHERE id = ?", [name, id]);
+    const [existingCategory] = await pool.query(
+      "SELECT id FROM categories WHERE name = ? AND user_id = ? AND id != ?",
+      [name, userId, id],
+    );
 
-    if (result.affectedRows === 0) return res.status(404).json({ error: "Categoría no encontrada" });
+    if (existingCategory.length > 0) {
+      return res.status(400).json({ error: "Ya tienes otra categoría registrada con ese nombre" });
+    }
 
-    const [rows] = await pool.query("SELECT * FROM categories WHERE id = ?", [id]);
+    const [result] = await pool.query("UPDATE categories SET name = ? WHERE id = ? AND user_id = ?", [
+      name,
+      id,
+      userId,
+    ]);
+
+    if (result.affectedRows === 0)
+      return res.status(404).json({ error: "Categoría no encontrada o no tienes permisos" });
+
+    const [rows] = await pool.query("SELECT * FROM categories WHERE id = ? AND user_id = ?", [id, userId]);
     res.json(categoryDecorator(rows[0]));
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -70,9 +96,12 @@ const update = async (req, res) => {
 const destroy = async (req, res) => {
   try {
     const { id } = req.params;
-    const [result] = await pool.query("DELETE FROM categories WHERE id = ?", [id]);
+    const userId = req.user.id;
 
-    if (result.affectedRows === 0) return res.status(404).json({ error: "Categoría no encontrada" });
+    const [result] = await pool.query("DELETE FROM categories WHERE id = ? AND user_id = ?", [id, userId]);
+
+    if (result.affectedRows === 0)
+      return res.status(404).json({ error: "Categoría no encontrada o no tienes permisos" });
     res.json({ message: "Categoría eliminada exitosamente" });
   } catch (error) {
     res.status(500).json({ error: error.message });
