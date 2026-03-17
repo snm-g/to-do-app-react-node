@@ -1,3 +1,5 @@
+import cors from "cors";
+
 import express from "express";
 import "./db/connection.js";
 import userRoutes from "./routes/users_route.js";
@@ -8,6 +10,12 @@ import userRoutes from "./routes/users_route.js";
 import { verifyToken } from "./middlewares/auth_middleware.js";
 
 const app = express();
+
+app.use(cors());
+
+// 2. Permites que Express lea el JSON que envías desde tu frontend
+app.use(express.json());
+
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
