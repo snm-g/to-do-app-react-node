@@ -14,7 +14,7 @@ const correrMigraciones = async () => {
     for (const archivo of archivosSql) {
       const rutaSql = path.join(__dirname, "migrations", archivo);
       if (fs.existsSync(rutaSql)) {
-        console.log(`➡️  Ejecutando ${archivo}...`);
+        console.log(`Ejecutando ${archivo}...`);
         const sqlNativo = fs.readFileSync(rutaSql, "utf8");
 
         await pool.query(sqlNativo);
