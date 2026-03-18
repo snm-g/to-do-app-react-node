@@ -3,7 +3,6 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import pool from "../db/connection.js";
 
-// REGISTRO DE USUARIO
 const register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -35,7 +34,6 @@ const register = async (req, res) => {
   }
 };
 
-// INICIO DE SESIÓN
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
