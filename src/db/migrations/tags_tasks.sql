@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS tags_tasks (
+  task_id VARCHAR(36) NOT NULL,
+  tag_id VARCHAR(36) NOT NULL,
+  PRIMARY KEY (task_id, tag_id),
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+  FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+);
