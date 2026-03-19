@@ -2,9 +2,6 @@ import crypto from "crypto";
 import pool from "../db/connection.js";
 import { taskDecorator, tasksListDecorator } from "../decorators/tasks_decorator.js";
 
-// ==========================================
-// EL SQL MAESTRO (Para traer la tarea vestida)
-// ==========================================
 const getTaskWithRelationsSQL = `
   SELECT 
     tasks.*,
@@ -23,7 +20,6 @@ const getTaskWithRelationsSQL = `
   WHERE tasks.id = ? AND tasks.user_id = ?
 `;
 
-// 1. LISTAR TODAS (Con Paginación para React)
 const index = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -31,30 +27,25 @@ const index = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
-    // Contamos el total para que React sepa cuántas páginas hay
     const [[{ total }]] = await pool.query("SELECT COUNT(*) as total FROM tasks WHERE user_id = ?", [userId]);
 
-    // Ojo: Aquí podrías usar el SQL Maestro modificado si quieres que el index también traiga relaciones completas,
-    // pero si tu taskDecorator ya hace el trabajo, lo dejamos así para no saturar.
     const [rows] = await pool.query("SELECT * FROM tasks WHERE user_id = ? LIMIT ? OFFSET ?", [userId, limit, offset]);
 
     res.json({
       data: tasksListDecorator(rows),
-      last_page: Math.ceil(total / limit), // Esto es lo que React lee como 'totalPaginas'
+      last_page: Math.ceil(total / limit),
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// 2. CREAR (Con Transacciones y SQL Maestro)
 const store = async (req, res) => {
   let connection;
   try {
     const userId = req.user.id;
     let { title, description, is_completed, category_id, tags } = req.body;
 
-    // Validaciones
     if (!title || title.trim() === "")
       return res.status(400).json({ error: "El título es obligatorio y no puede estar vacío" });
     title = title.trim();
@@ -62,20 +53,17 @@ const store = async (req, res) => {
     if (tags && !Array.isArray(tags))
       return res.status(400).json({ error: "El campo tags debe ser un arreglo de IDs" });
 
-    // ESCUDO ANTI-ERROR 400: Convertir textos vacíos a null
     const finalCategoryId = category_id === "" ? null : category_id;
     const taskId = crypto.randomUUID();
 
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    // Insertar tarea
     await connection.query(
       "INSERT INTO tasks (id, title, description, is_completed, user_id, category_id) VALUES (?, ?, ?, ?, ?, ?)",
       [taskId, title, description || null, is_completed || false, userId, finalCategoryId],
     );
 
-    // Insertar etiquetas
     if (tags && tags.length > 0) {
       for (const tagId of tags) {
         await connection.query("INSERT INTO tags_tasks (task_id, tag_id) VALUES (?, ?)", [taskId, tagId]);
@@ -84,9 +72,8 @@ const store = async (req, res) => {
 
     await connection.commit();
 
-    // Devolvemos la tarea "vestida"
     const [rows] = await pool.query(getTaskWithRelationsSQL, [taskId, userId]);
-    res.status(201).json(rows[0]); // Ya no necesita decorador porque el SQL hizo el JSON
+    res.status(201).json(rows[0]);
   } catch (error) {
     if (connection) await connection.rollback();
     console.error(error);
@@ -98,7 +85,6 @@ const store = async (req, res) => {
   }
 };
 
-// 3. VER UNA SOLA (Refactorizada con SQL Maestro)
 const get = async (req, res) => {
   try {
     const { id } = req.params;
@@ -114,7 +100,6 @@ const get = async (req, res) => {
   }
 };
 
-// 4. ACTUALIZAR (Con Transacciones y SQL Maestro)
 const update = async (req, res) => {
   let connection;
   try {
@@ -165,7 +150,6 @@ const update = async (req, res) => {
   }
 };
 
-// 5. ELIMINAR
 const destroy = async (req, res) => {
   try {
     const { id } = req.params;
